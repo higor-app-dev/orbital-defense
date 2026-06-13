@@ -280,4 +280,3 @@ scene("game", () => {
 });
 
 go("game");
-// trigger redeploy
