@@ -10,6 +10,30 @@ kaplay({
     background: "#0a0a2e",
 });
 
+// ── Native canvas listeners (funciona em QUALQUER dispositivo) ────
+let reverseHandler = null;
+let restartHandler = null;
+
+(function initCanvasTouch() {
+    const attach = () => {
+        const c = document.querySelector("canvas");
+        if (!c) return false;
+        c.addEventListener("touchstart", (e) => {
+            e.preventDefault();
+            // Reverse
+            if (typeof reverseHandler === "function") reverseHandler();
+            // Restart (game over)
+            if (typeof restartHandler === "function") restartHandler();
+        }, { passive: false });
+        c.addEventListener("mousedown", (e) => {
+            if (typeof reverseHandler === "function") reverseHandler();
+            if (typeof restartHandler === "function") restartHandler();
+        });
+        return true;
+    };
+    if (!attach()) onLoad(() => attach());
+})();
+
 // ── Scene ─────────────────────────────────────────────────────────
 scene("game", () => {
     let score = 0;
@@ -17,6 +41,7 @@ scene("game", () => {
     let rotSpeed = 120; // degrees per second
     let spawnTimer = 0;
     let difficultyTimer = 0;
+    let lastReverse = 0;
 
     const CX = width() / 2;
     const CY = height() / 2;
@@ -25,6 +50,19 @@ scene("game", () => {
     const SHIELD_R = 20;
     const BASE_R = 35;
     const ENEMY_R = 12;
+
+    // Connect native handlers
+    reverseHandler = () => {
+        const now = Date.now();
+        if (now - lastReverse < 250 || gameOver) return;
+        lastReverse = now;
+        rotSpeed *= -1;
+        shield.outline = outline(3, color(100, 255, 150));
+        wait(0.12, () => {
+            shield.outline = outline(3, color(30, 180, 60));
+        });
+    };
+    restartHandler = null;
 
     // ── Stars background ─────────────────────────────────────────
     for (let i = 0; i < 60; i++) {
@@ -68,7 +106,7 @@ scene("game", () => {
     ]);
 
     // ── Base (Núcleo) ────────────────────────────────────────────
-    const base = add([
+    add([
         pos(CX, CY),
         circle(BASE_R),
         color(50, 100, 255),
@@ -79,7 +117,7 @@ scene("game", () => {
         z(10),
     ]);
 
-    // Indoor glow ring
+    // Inner glow
     add([
         pos(CX, CY),
         circle(BASE_R - 8),
@@ -129,24 +167,6 @@ scene("game", () => {
         shield.pos.y = orbitPivot.pos.y + Math.sin(rad) * ORBIT_RADIUS;
     });
 
-    // ── Tap-to-reverse (click + touch para mobile/desktop) ──────
-    let lastInput = 0;
-    function handleReverse() {
-        const now = time();
-        if (now - lastInput < 0.25) return; // debounce
-        lastInput = now;
-        if (gameOver) return;
-        rotSpeed *= -1;
-        // Visual feedback
-        shield.outline = outline(3, color(100, 255, 150));
-        wait(0.12, () => {
-            shield.outline = outline(3, color(30, 180, 60));
-        });
-    }
-
-    onClick(handleReverse);
-    onTouchStart(handleReverse);
-
     // ── Enemy spawning ───────────────────────────────────────────
     function spawnEnemy() {
         const side = rand(0, 4);
@@ -194,20 +214,18 @@ scene("game", () => {
 
         const shieldHits = [];
         for (const e of get("enemy")) {
-            // Shield collision
             if (shield.pos.dist(e.pos) < SHIELD_R + ENEMY_R) {
                 shieldHits.push(e);
                 score++;
                 scoreLabel.text = "Score: " + score;
-                // Flash shield
                 shield.color = color(100, 255, 130);
                 wait(0.08, () => {
                     if (!gameOver) shield.color = color(50, 230, 80);
                 });
                 continue;
             }
-            // Base collision = game over
-            if (base.pos.dist(e.pos) < BASE_R + ENEMY_R) {
+            const baseObj = get("base")[0];
+            if (baseObj && baseObj.pos.dist(e.pos) < BASE_R + ENEMY_R) {
                 triggerGameOver();
                 return;
             }
@@ -223,6 +241,11 @@ scene("game", () => {
         destroyAll("enemy");
         destroy(hintText);
 
+        // Connect restart handler
+        restartHandler = () => {
+            if (gameOver) go("game");
+        };
+
         // Dim overlay
         add([
             rect(width(), height()),
@@ -233,7 +256,6 @@ scene("game", () => {
             fixed(),
         ]);
 
-        // Panel
         add([
             rect(300, 240),
             pos(CX, CY),
@@ -271,18 +293,9 @@ scene("game", () => {
             fixed(),
         ]);
 
-        // Pulsing restart text
         onUpdate(() => {
             if (!gameOver) return;
             restartText.opacity = 0.5 + Math.sin(time() * 3) * 0.5;
-        });
-
-        // Restart on click/touch
-        onClick(() => {
-            if (gameOver) go("game");
-        });
-        onTouchStart(() => {
-            if (gameOver) go("game");
         });
     }
 });
