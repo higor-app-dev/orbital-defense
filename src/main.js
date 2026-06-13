@@ -117,10 +117,8 @@ scene("game", () => {
         const sx = CX + Math.cos(rad) * ORBIT_RADIUS;
         const sy = CY + Math.sin(rad) * ORBIT_RADIUS;
 
-        shield.pos.x = sx;
-        shield.pos.y = sy;
-        orbitDot.pos.x = sx;
-        orbitDot.pos.y = sy;
+        shield.moveTo(sx, sy);
+        orbitDot.moveTo(sx, sy);
 
         // DEBUG
         debugText.text = "ang:" + Math.round(orbitAngle) + " spd:" + Math.round(rotSpeed) + " f:" + frameCount;
