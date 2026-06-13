@@ -129,8 +129,12 @@ scene("game", () => {
         shield.pos.y = orbitPivot.pos.y + Math.sin(rad) * ORBIT_RADIUS;
     });
 
-    // ── Tap-to-reverse ───────────────────────────────────────────
+    // ── Tap-to-reverse (click + touch para mobile/desktop) ──────
+    let lastInput = 0;
     function handleReverse() {
+        const now = time();
+        if (now - lastInput < 0.25) return; // debounce
+        lastInput = now;
         if (gameOver) return;
         rotSpeed *= -1;
         // Visual feedback
@@ -141,6 +145,7 @@ scene("game", () => {
     }
 
     onClick(handleReverse);
+    onTouchStart(handleReverse);
 
     // ── Enemy spawning ───────────────────────────────────────────
     function spawnEnemy() {
@@ -272,8 +277,11 @@ scene("game", () => {
             restartText.opacity = 0.5 + Math.sin(time() * 3) * 0.5;
         });
 
-        // Restart on click
+        // Restart on click/touch
         onClick(() => {
+            if (gameOver) go("game");
+        });
+        onTouchStart(() => {
             if (gameOver) go("game");
         });
     }
