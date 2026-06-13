@@ -9,12 +9,10 @@ kaplay({
     background: "#0a0a2e",
 });
 
-// ── Native input via flags (NÃO depende do onClick do Kaplay) ────
-// O onUpdate verifica essas flags a cada frame
+// ── Native input ──────────────────────────────────────────────────
 let pendingReverse = false;
 let pendingRestart = false;
 
-// Adiciona listeners nativos assim que o canvas existir
 (function initInput() {
     const tryAttach = () => {
         const c = document.querySelector("canvas");
@@ -26,7 +24,6 @@ let pendingRestart = false;
         c.addEventListener("mousedown", () => {
             pendingReverse = true;
         });
-        console.log("Input listeners attached");
     };
     tryAttach();
 })();
@@ -42,6 +39,10 @@ scene("game", () => {
     const CX = width() / 2, CY = height() / 2;
     const ORBIT_RADIUS = 100, SHIELD_R = 20, BASE_R = 35, ENEMY_R = 12;
 
+    // ── DEBUG: ring that rotates visibly ─────────────────────────
+    // A line/indicator to show orbit is working
+    let orbitAngle = 0;
+
     // Stars
     for (let i = 0; i < 60; i++) add([
         pos(rand(0, width()), rand(0, height())),
@@ -54,28 +55,39 @@ scene("game", () => {
           anchor("center"), color(100, 150, 255), fixed(), z(100) ]);
     const scoreLabel = add([ text("Score: 0", { size: 26 }), pos(CX, 42),
           anchor("center"), color(255, 255, 255), fixed(), z(100) ]);
+
+    // DEBUG: show orbit angle
+    const debugText = add([ text("", { size: 11 }), pos(10, 10),
+          color(255, 255, 0), fixed(), z(200) ]);
+
     const hintText = add([ text("Toque para inverter a órbita", { size: 12 }),
           pos(CX, height() - 20), anchor("center"),
           color(150, 150, 200), opacity(0.7), fixed(), z(100) ]);
 
-    // Base
+    // Base - BIG so enemies can't miss it (debug)
     add([ pos(CX, CY), circle(BASE_R), color(50, 100, 255),
           outline(3, color(30, 60, 200)), anchor("center"), area(), "base", z(10) ]);
-    add([ pos(CX, CY), circle(BASE_R - 8), color(80, 140, 255),
-          opacity(0.15), anchor("center"), z(9) ]);
 
-    // Orbit
-    let orbitAngle = 0;
+    // Orbit ring - visible
+    const orbitRing = add([ pos(CX, CY), circle(ORBIT_RADIUS),
+          color(80, 255, 120), opacity(0.15), anchor("center"),
+          outline(2, color(80, 255, 120)), z(2) ]);
+
+    // Orbital position indicator (small dot on the ring path)
+    const orbitDot = add([ pos(CX + ORBIT_RADIUS, CY), circle(4),
+          color(255, 255, 0), anchor("center"), z(3) ]);
+
+    // Shield
     const shield = add([ pos(CX + ORBIT_RADIUS, CY), circle(SHIELD_R),
           color(50, 230, 80), outline(3, color(30, 180, 60)),
           anchor("center"), area(), "shield", z(11) ]);
-    add([ pos(CX, CY), circle(ORBIT_RADIUS), color(80, 255, 120),
-          opacity(0.07), anchor("center"),
-          outline(1, color(80, 255, 120, 0.15)), z(2) ]);
 
     // ── Update ──────────────────────────────────────────────────
+    let frameCount = 0;
     onUpdate(() => {
-        // Process input flags
+        frameCount++;
+
+        // Process input
         if (pendingReverse && !gameOver) {
             pendingReverse = false;
             rotSpeed *= -1;
@@ -89,13 +101,32 @@ scene("game", () => {
             go("game");
             return;
         }
-        if (gameOver) return;
+        if (gameOver) {
+            debugText.text = "GAME OVER frame:" + frameCount;
+            return;
+        }
 
         // Orbit
         orbitAngle += rotSpeed * dt();
+
+        // Keep angle in 0-360 range
+        if (orbitAngle > 360) orbitAngle -= 360;
+        if (orbitAngle < 0) orbitAngle += 360;
+
         const rad = orbitAngle * Math.PI / 180;
-        shield.pos.x = CX + Math.cos(rad) * ORBIT_RADIUS;
-        shield.pos.y = CY + Math.sin(rad) * ORBIT_RADIUS;
+        const sx = CX + Math.cos(rad) * ORBIT_RADIUS;
+        const sy = CY + Math.sin(rad) * ORBIT_RADIUS;
+
+        shield.pos.x = sx;
+        shield.pos.y = sy;
+        orbitDot.pos.x = sx;
+        orbitDot.pos.y = sy;
+
+        // DEBUG
+        debugText.text = "ang:" + Math.round(orbitAngle) + " spd:" + Math.round(rotSpeed) + " f:" + frameCount;
+
+        // Pulsing orbit ring
+        orbitRing.opacity = 0.1 + Math.sin(time() * 2) * 0.05;
 
         // Spawn
         diffTimer += dt();
@@ -128,7 +159,7 @@ scene("game", () => {
         for (const e of hits) destroy(e);
     });
 
-    // Kaplay onClick as backup (funciona em desktop)
+    // Backup click
     onClick(() => {
         if (gameOver) pendingRestart = true;
         else pendingReverse = true;
