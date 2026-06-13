@@ -1,7 +1,6 @@
 import kaplay from "kaplay";
 import "kaplay/global";
 
-// ── Initialization ────────────────────────────────────────────────
 kaplay({
     touchToMouse: true,
     letterbox: true,
@@ -10,41 +9,33 @@ kaplay({
     background: "#0a0a2e",
 });
 
-// ── Overlay nativo para capturar TOQUE E CLIQUE em qualquer device ─
-// Cria um div invisível sobre o canvas que captura eventos nativos
-// e os repassa para o Kaplay
-(function setupInputOverlay() {
-    const waitAndSetup = () => {
+// ── Native input (funciona em QUALQUER dispositivo) ───────────────
+let pendingReverse = false;
+let pendingRestart = false;
+
+(function initNativeInput() {
+    const check = () => {
         const c = document.querySelector("canvas");
-        if (!c) { setTimeout(waitAndSetup, 50); return; }
-
-        // Cria overlay
-        const overlay = document.createElement("div");
-        overlay.style.cssText =
-            "position:fixed;top:0;left:0;width:100%;height:100%;z-index:999;" +
-            "touch-action:none;-webkit-touch-callout:none;";
-
-        // Touch → clique no canvas
-        overlay.addEventListener("touchstart", (e) => {
+        if (!c) { setTimeout(check, 50); return; }
+        c.addEventListener("touchstart", (e) => {
             e.preventDefault();
-            const touch = e.changedTouches[0];
-            c.dispatchEvent(new PointerEvent("pointerdown", {
-                clientX: touch.clientX, clientY: touch.clientY,
-                bubbles: true, cancelable: true,
-            }));
-            c.dispatchEvent(new PointerEvent("pointerup", {
-                clientX: touch.clientX, clientY: touch.clientY,
-                bubbles: true, cancelable: true,
-            }));
-            c.dispatchEvent(new MouseEvent("click", {
-                clientX: touch.clientX, clientY: touch.clientY,
-                bubbles: true, cancelable: true,
-            }));
+            pendingReverse = true;
         }, { passive: false });
-
-        document.body.appendChild(overlay);
+        c.addEventListener("mousedown", () => {
+            pendingReverse = true;
+        });
     };
-    setTimeout(waitAndSetup, 100);
+    // Tenta imediatamente e via onLoad como fallback
+    check();
+    onLoad(() => {
+        const c = document.querySelector("canvas");
+        if (c) {
+            c.addEventListener("touchstart", (e) => {
+                e.preventDefault();
+                pendingReverse = true;
+            }, { passive: false });
+        }
+    });
 })();
 
 // ── Scene ─────────────────────────────────────────────────────────
@@ -54,29 +45,26 @@ scene("game", () => {
     let rotSpeed = 120;
     let spawnTimer = 0;
     let difficultyTimer = 0;
-    let lastReverse = 0;
 
     const CX = width() / 2;
     const CY = height() / 2;
-
     const ORBIT_RADIUS = 100;
     const SHIELD_R = 20;
     const BASE_R = 35;
     const ENEMY_R = 12;
 
-    // ── Stars ─────────────────────────────────────────────────────
+    // Stars
     for (let i = 0; i < 60; i++) {
         add([
             pos(rand(0, width()), rand(0, height())),
             circle(rand(0.5, 2)),
             color(255, 255, 255),
             opacity(rand(0.2, 0.8)),
-            fixed(),
-            z(1),
+            fixed(), z(1),
         ]);
     }
 
-    // ── HUD ──────────────────────────────────────────────────────
+    // HUD
     add([
         text("ORBITAL DEFENSE", { size: 14 }),
         pos(CX, 14), anchor("center"),
@@ -95,7 +83,7 @@ scene("game", () => {
         color(150, 150, 200), opacity(0.7), fixed(), z(100),
     ]);
 
-    // ── Base ─────────────────────────────────────────────────────
+    // Base
     add([
         pos(CX, CY), circle(BASE_R),
         color(50, 100, 255), outline(3, color(30, 60, 200)),
@@ -106,7 +94,7 @@ scene("game", () => {
         color(80, 140, 255), opacity(0.15), anchor("center"), z(9),
     ]);
 
-    // ── Shield orbit ─────────────────────────────────────────────
+    // Orbit
     const orbitPivot = add([
         pos(CX, CY), anchor("center"), { angle: 0 }, z(9),
     ]);
@@ -123,50 +111,27 @@ scene("game", () => {
         outline(1, color(80, 255, 120, 0.15)), z(2),
     ]);
 
-    // ── Orbit update ─────────────────────────────────────────────
+    // ── Main update ──────────────────────────────────────────────
     onUpdate(() => {
         if (gameOver) return;
+
+        // Process native input
+        if (pendingReverse) {
+            pendingReverse = false;
+            rotSpeed *= -1;
+            shield.outline = outline(3, color(100, 255, 150));
+            wait(0.12, () => {
+                shield.outline = outline(3, color(30, 180, 60));
+            });
+        }
+
+        // Orbit rotation
         orbitPivot.angle += rotSpeed * dt();
         const rad = orbitPivot.angle * Math.PI / 180;
         shield.pos.x = orbitPivot.pos.x + Math.cos(rad) * ORBIT_RADIUS;
         shield.pos.y = orbitPivot.pos.y + Math.sin(rad) * ORBIT_RADIUS;
-    });
 
-    // ── Reverse handler ─────────────────────────────────────────
-    onClick(() => {
-        const now = Date.now();
-        if (now - lastReverse < 250 || gameOver) return;
-        lastReverse = now;
-        rotSpeed *= -1;
-        shield.outline = outline(3, color(100, 255, 150));
-        wait(0.12, () => {
-            shield.outline = outline(3, color(30, 180, 60));
-        });
-    });
-
-    // ── Enemy spawn ──────────────────────────────────────────────
-    function spawnEnemy() {
-        const side = rand(0, 4);
-        const margin = 40;
-        let x, y;
-        if (side < 1) { x = rand(0, width()); y = -margin; }
-        else if (side < 2) { x = width() + margin; y = rand(0, height()); }
-        else if (side < 3) { x = rand(0, width()); y = height() + margin; }
-        else { x = -margin; y = rand(0, height()); }
-
-        const dir = vec2(CX - x, CY - y).unit();
-        const speed = 70 + difficultyTimer * 2;
-
-        add([
-            pos(x, y), circle(ENEMY_R),
-            color(255, 40, 40), outline(2, color(200, 20, 20)),
-            anchor("center"), area(),
-            move(dir, speed), "enemy", z(5),
-        ]);
-    }
-
-    onUpdate(() => {
-        if (gameOver) return;
+        // Difficulty
         difficultyTimer += dt();
         const interval = Math.max(0.35, 1.4 - difficultyTimer * 0.008);
         spawnTimer += dt();
@@ -175,11 +140,8 @@ scene("game", () => {
             const count = 1 + Math.floor(difficultyTimer / 12);
             for (let i = 0; i < Math.min(count, 6); i++) spawnEnemy();
         }
-    });
 
-    // ── Collision ────────────────────────────────────────────────
-    onUpdate(() => {
-        if (gameOver) return;
+        // Collision
         const shieldHits = [];
         for (const e of get("enemy")) {
             if (shield.pos.dist(e.pos) < SHIELD_R + ENEMY_R) {
@@ -199,12 +161,48 @@ scene("game", () => {
             }
         }
         for (const e of shieldHits) destroy(e);
+
+        // Restart
+        if (pendingRestart && gameOver) {
+            pendingRestart = false;
+            go("game");
+        }
     });
+
+    // Kaplay onClick as backup
+    onClick(() => {
+        if (gameOver) { pendingRestart = true; return; }
+        rotSpeed *= -1;
+        shield.outline = outline(3, color(100, 255, 150));
+        wait(0.12, () => {
+            shield.outline = outline(3, color(30, 180, 60));
+        });
+    });
+
+    // ── Enemy spawn ──────────────────────────────────────────────
+    function spawnEnemy() {
+        const side = rand(0, 4);
+        const margin = 40;
+        let x, y;
+        if (side < 1) { x = rand(0, width()); y = -margin; }
+        else if (side < 2) { x = width() + margin; y = rand(0, height()); }
+        else if (side < 3) { x = rand(0, width()); y = height() + margin; }
+        else { x = -margin; y = rand(0, height()); }
+
+        const dir = vec2(CX - x, CY - y).unit();
+        add([
+            pos(x, y), circle(ENEMY_R),
+            color(255, 40, 40), outline(2, color(200, 20, 20)),
+            anchor("center"), area(),
+            move(dir, 70 + difficultyTimer * 2), "enemy", z(5),
+        ]);
+    }
 
     // ── Game Over ────────────────────────────────────────────────
     function triggerGameOver() {
         if (gameOver) return;
         gameOver = true;
+        pendingRestart = false;
         destroyAll("enemy");
         destroy(hintText);
 
@@ -225,17 +223,15 @@ scene("game", () => {
             pos(CX, CY + 5), color(255, 255, 255), anchor("center"), z(100), fixed(),
         ]);
 
-        const restartText = add([
+        const rt = add([
             text("Toque para reiniciar", { size: 16 }),
             pos(CX, CY + 50), color(160, 160, 180), anchor("center"), z(100), fixed(),
         ]);
 
         onUpdate(() => {
             if (!gameOver) return;
-            restartText.opacity = 0.5 + Math.sin(time() * 3) * 0.5;
+            rt.opacity = 0.5 + Math.sin(time() * 3) * 0.5;
         });
-
-        onClick(() => { if (gameOver) go("game"); });
     }
 });
 
