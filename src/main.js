@@ -9,35 +9,6 @@ kaplay({
     background: "#0a0a2e",
 });
 
-// ── Native input (funciona em QUALQUER dispositivo) ───────────────
-let pendingReverse = false;
-let pendingRestart = false;
-
-(function initNativeInput() {
-    const check = () => {
-        const c = document.querySelector("canvas");
-        if (!c) { setTimeout(check, 50); return; }
-        c.addEventListener("touchstart", (e) => {
-            e.preventDefault();
-            pendingReverse = true;
-        }, { passive: false });
-        c.addEventListener("mousedown", () => {
-            pendingReverse = true;
-        });
-    };
-    // Tenta imediatamente e via onLoad como fallback
-    check();
-    onLoad(() => {
-        const c = document.querySelector("canvas");
-        if (c) {
-            c.addEventListener("touchstart", (e) => {
-                e.preventDefault();
-                pendingReverse = true;
-            }, { passive: false });
-        }
-    });
-})();
-
 // ── Scene ─────────────────────────────────────────────────────────
 scene("game", () => {
     let score = 0;
@@ -84,7 +55,7 @@ scene("game", () => {
     ]);
 
     // Base
-    add([
+    const base = add([
         pos(CX, CY), circle(BASE_R),
         color(50, 100, 255), outline(3, color(30, 60, 200)),
         anchor("center"), area(), "base", z(10),
@@ -94,44 +65,49 @@ scene("game", () => {
         color(80, 140, 255), opacity(0.15), anchor("center"), z(9),
     ]);
 
-    // Orbit
+    // Orbit pivot
     const orbitPivot = add([
         pos(CX, CY), anchor("center"), { angle: 0 }, z(9),
     ]);
 
+    // Shield
     const shield = add([
         pos(CX + ORBIT_RADIUS, CY), circle(SHIELD_R),
         color(50, 230, 80), outline(3, color(30, 180, 60)),
         anchor("center"), area(), "shield", z(11),
     ]);
 
+    // Orbit ring
     add([
         pos(CX, CY), circle(ORBIT_RADIUS),
         color(80, 255, 120), opacity(0.07), anchor("center"),
         outline(1, color(80, 255, 120, 0.15)), z(2),
     ]);
 
-    // ── Main update ──────────────────────────────────────────────
+    // ── Input ──────────────────────────────────────────────────
+    function handleInput() {
+        if (gameOver) { go("game"); return; }
+        rotSpeed *= -1;
+        shield.outline = outline(3, color(100, 255, 150));
+        wait(0.12, () => {
+            shield.outline = outline(3, color(30, 180, 60));
+        });
+    }
+
+    onClick(handleInput);
+    onTouchStart(handleInput);
+
+    // ── Game loop ──────────────────────────────────────────────
     onUpdate(() => {
         if (gameOver) return;
 
-        // Process native input
-        if (pendingReverse) {
-            pendingReverse = false;
-            rotSpeed *= -1;
-            shield.outline = outline(3, color(100, 255, 150));
-            wait(0.12, () => {
-                shield.outline = outline(3, color(30, 180, 60));
-            });
-        }
-
-        // Orbit rotation
+        // Orbit
         orbitPivot.angle += rotSpeed * dt();
         const rad = orbitPivot.angle * Math.PI / 180;
         shield.pos.x = orbitPivot.pos.x + Math.cos(rad) * ORBIT_RADIUS;
         shield.pos.y = orbitPivot.pos.y + Math.sin(rad) * ORBIT_RADIUS;
 
-        // Difficulty
+        // Spawn
         difficultyTimer += dt();
         const interval = Math.max(0.35, 1.4 - difficultyTimer * 0.008);
         spawnTimer += dt();
@@ -142,10 +118,10 @@ scene("game", () => {
         }
 
         // Collision
-        const shieldHits = [];
+        const hits = [];
         for (const e of get("enemy")) {
             if (shield.pos.dist(e.pos) < SHIELD_R + ENEMY_R) {
-                shieldHits.push(e);
+                hits.push(e);
                 score++;
                 scoreLabel.text = "Score: " + score;
                 shield.color = color(100, 255, 130);
@@ -154,32 +130,15 @@ scene("game", () => {
                 });
                 continue;
             }
-            const baseObj = get("base")[0];
-            if (baseObj && baseObj.pos.dist(e.pos) < BASE_R + ENEMY_R) {
+            if (base.pos.dist(e.pos) < BASE_R + ENEMY_R) {
                 triggerGameOver();
                 return;
             }
         }
-        for (const e of shieldHits) destroy(e);
-
-        // Restart
-        if (pendingRestart && gameOver) {
-            pendingRestart = false;
-            go("game");
-        }
+        for (const e of hits) destroy(e);
     });
 
-    // Kaplay onClick as backup
-    onClick(() => {
-        if (gameOver) { pendingRestart = true; return; }
-        rotSpeed *= -1;
-        shield.outline = outline(3, color(100, 255, 150));
-        wait(0.12, () => {
-            shield.outline = outline(3, color(30, 180, 60));
-        });
-    });
-
-    // ── Enemy spawn ──────────────────────────────────────────────
+    // ── Enemy spawn ────────────────────────────────────────────
     function spawnEnemy() {
         const side = rand(0, 4);
         const margin = 40;
@@ -198,35 +157,25 @@ scene("game", () => {
         ]);
     }
 
-    // ── Game Over ────────────────────────────────────────────────
+    // ── Game Over ──────────────────────────────────────────────
     function triggerGameOver() {
         if (gameOver) return;
         gameOver = true;
-        pendingRestart = false;
         destroyAll("enemy");
         destroy(hintText);
 
-        add([
-            rect(width(), height()), pos(0, 0),
-            color(0, 0, 0), opacity(0.55), z(90), fixed(),
-        ]);
-        add([
-            rect(300, 240), pos(CX, CY),
-            color(15, 15, 35), anchor("center"), z(95), fixed(), opacity(0.95),
-        ]);
-        add([
-            text("GAME OVER", { size: 38 }),
-            pos(CX, CY - 55), color(255, 50, 50), anchor("center"), z(100), fixed(),
-        ]);
-        add([
-            text("Score: " + score, { size: 28 }),
-            pos(CX, CY + 5), color(255, 255, 255), anchor("center"), z(100), fixed(),
-        ]);
+        add([ rect(width(), height()), pos(0, 0), color(0, 0, 0),
+              opacity(0.55), z(90), fixed() ]);
+        add([ rect(300, 240), pos(CX, CY), color(15, 15, 35),
+              anchor("center"), z(95), fixed(), opacity(0.95) ]);
+        add([ text("GAME OVER", { size: 38 }), pos(CX, CY - 55),
+              color(255, 50, 50), anchor("center"), z(100), fixed() ]);
+        add([ text("Score: " + score, { size: 28 }), pos(CX, CY + 5),
+              color(255, 255, 255), anchor("center"), z(100), fixed() ]);
 
-        const rt = add([
-            text("Toque para reiniciar", { size: 16 }),
-            pos(CX, CY + 50), color(160, 160, 180), anchor("center"), z(100), fixed(),
-        ]);
+        const rt = add([ text("Toque para reiniciar", { size: 16 }),
+            pos(CX, CY + 50), color(160, 160, 180),
+            anchor("center"), z(100), fixed() ]);
 
         onUpdate(() => {
             if (!gameOver) return;
