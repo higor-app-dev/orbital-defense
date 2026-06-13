@@ -140,7 +140,7 @@ scene("game", () => {
         });
     }
 
-    onTouchStart(handleReverse);
+    onClick(handleReverse);
 
     // ── Enemy spawning ───────────────────────────────────────────
     function spawnEnemy() {
@@ -272,8 +272,8 @@ scene("game", () => {
             restartText.opacity = 0.5 + Math.sin(time() * 3) * 0.5;
         });
 
-        // Restart on touch
-        onTouchStart(() => {
+        // Restart on click
+        onClick(() => {
             if (gameOver) go("game");
         });
     }
