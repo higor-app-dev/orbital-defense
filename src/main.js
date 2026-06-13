@@ -65,7 +65,7 @@ scene("game", () => {
           opacity(0.15), anchor("center"), z(9) ]);
 
     // Orbit
-    const pivot = add([ pos(CX, CY), anchor("center"), { angle: 0 }, z(9) ]);
+    let orbitAngle = 0;
     const shield = add([ pos(CX + ORBIT_RADIUS, CY), circle(SHIELD_R),
           color(50, 230, 80), outline(3, color(30, 180, 60)),
           anchor("center"), area(), "shield", z(11) ]);
@@ -92,10 +92,10 @@ scene("game", () => {
         if (gameOver) return;
 
         // Orbit
-        pivot.angle += rotSpeed * dt();
-        const rad = pivot.angle * Math.PI / 180;
-        shield.pos.x = pivot.pos.x + Math.cos(rad) * ORBIT_RADIUS;
-        shield.pos.y = pivot.pos.y + Math.sin(rad) * ORBIT_RADIUS;
+        orbitAngle += rotSpeed * dt();
+        const rad = orbitAngle * Math.PI / 180;
+        shield.pos.x = CX + Math.cos(rad) * ORBIT_RADIUS;
+        shield.pos.y = CY + Math.sin(rad) * ORBIT_RADIUS;
 
         // Spawn
         diffTimer += dt();
